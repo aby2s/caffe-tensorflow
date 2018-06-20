@@ -44,7 +44,7 @@ class TensorFlowNode(object):
 
     def format(self, arg):
         '''Returns a string representation for the given value.'''
-        return "'%s'" % arg if isinstance(arg, basestring) else str(arg)
+        return "'%s'" % arg if isinstance(arg, str) else str(arg)
 
     def pair(self, key, value):
         '''Returns key=formatted(value).'''
@@ -53,7 +53,7 @@ class TensorFlowNode(object):
     def emit(self):
         '''Emits the Python source for this node.'''
         # Format positional arguments
-        args = map(self.format, self.args)
+        args = list(map(self.format, self.args))
         # Format any keyword arguments
         if self.kwargs:
             args += [self.pair(k, v) for k, v in self.kwargs]
@@ -103,6 +103,10 @@ class TensorFlowMapper(NodeMapper):
 
     def map_relu(self, node):
         return TensorFlowNode('relu')
+
+    def map_p_re_lu(self, node):
+        alpha = node.data['alpha']
+        return TensorFlowNode('prelu')
 
     def map_pooling(self, node):
         pool_type = node.parameters.pool
@@ -263,7 +267,9 @@ class TensorFlowTransformer(object):
                     NodeKind.Convolution: (2, 3, 1, 0),
 
                     # (c_o, c_i) -> (c_i, c_o)
-                    NodeKind.InnerProduct: (1, 0)
+                    NodeKind.InnerProduct: (1, 0),
+                    #It is for reshape into 3 dimension
+                    NodeKind.PReLU: (-1, 1, 1)
                 }),
 
                 # Pre-process batch normalization data

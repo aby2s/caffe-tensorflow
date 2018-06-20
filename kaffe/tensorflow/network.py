@@ -1,3 +1,5 @@
+from functools import reduce
+
 import numpy as np
 import tensorflow as tf
 
@@ -31,7 +33,7 @@ def layer(op):
 
 class Network(object):
 
-    def __init__(self, inputs, trainable=True):
+    def __init__(self, inputs, trainable=False):
         # The input nodes for this network
         self.inputs = inputs
         # The current list of terminal nodes
@@ -59,7 +61,7 @@ class Network(object):
         data_dict = np.load(data_path).item()
         for op_name in data_dict:
             with tf.variable_scope(op_name, reuse=True):
-                for param_name, data in data_dict[op_name].iteritems():
+                for param_name, data in data_dict[op_name].items():
                     try:
                         var = tf.get_variable(param_name)
                         session.run(var.assign(data))
@@ -74,7 +76,7 @@ class Network(object):
         assert len(args) != 0
         self.terminals = []
         for fed_layer in args:
-            if isinstance(fed_layer, basestring):
+            if isinstance(fed_layer, str):
                 try:
                     fed_layer = self.layers[fed_layer]
                 except KeyError:
@@ -117,12 +119,12 @@ class Network(object):
         # Verify that the padding is acceptable
         self.validate_padding(padding)
         # Get the number of channels in the input
-        c_i = input.get_shape()[-1]
+        c_i = input.get_shape()[1].value
         # Verify that the grouping parameter is valid
         assert c_i % group == 0
         assert c_o % group == 0
         # Convolution for a given input and kernel
-        convolve = lambda i, k: tf.nn.conv2d(i, k, [1, s_h, s_w, 1], padding=padding)
+        convolve = lambda i, k: tf.nn.conv2d(i, k, [1, s_h, s_w, 1], padding=padding, data_format='NCHW')
         with tf.variable_scope(name) as scope:
             kernel = self.make_var('weights', shape=[k_h, k_w, c_i / group, c_o])
             if group == 1:
@@ -138,7 +140,7 @@ class Network(object):
             # Add the biases
             if biased:
                 biases = self.make_var('biases', [c_o])
-                output = tf.nn.bias_add(output, biases)
+                output = tf.nn.bias_add(output, biases, data_format='NCHW')
             if relu:
                 # ReLU non-linearity
                 output = tf.nn.relu(output, name=scope.name)
@@ -149,11 +151,22 @@ class Network(object):
         return tf.nn.relu(input, name=name)
 
     @layer
+    def prelu(self, input, name):
+        with tf.variable_scope(name):
+            i = int(input.get_shape()[-3])
+            alpha = self.make_var('alpha', shape=(i, 1, 1))
+            tf.keras.layers.PReLU()
+            output = tf.nn.relu(input) - tf.multiply(alpha, tf.nn.relu(-1.0*input))
+            #output = tf.where(input > 0, input, tf.multiply(alpha, input))#tf.maximum(0.0, input) + tf.multiply(alpha, tf.minimum(0.0, input))
+        return output
+
+    @layer
     def max_pool(self, input, k_h, k_w, s_h, s_w, name, padding=DEFAULT_PADDING):
         self.validate_padding(padding)
         return tf.nn.max_pool(input,
-                              ksize=[1, k_h, k_w, 1],
-                              strides=[1, s_h, s_w, 1],
+                              ksize=[1, 1, k_h, k_w],
+                              strides=[1, 1, s_h, s_w],
+                              data_format='NCHW',
                               padding=padding,
                               name=name)
 
@@ -161,9 +174,10 @@ class Network(object):
     def avg_pool(self, input, k_h, k_w, s_h, s_w, name, padding=DEFAULT_PADDING):
         self.validate_padding(padding)
         return tf.nn.avg_pool(input,
-                              ksize=[1, k_h, k_w, 1],
-                              strides=[1, s_h, s_w, 1],
+                              ksize=[1, 1, k_h, k_w],
+                              strides=[1, 1, s_h, s_w],
                               padding=padding,
+                              data_format='NCHW',
                               name=name)
 
     @layer
@@ -181,21 +195,23 @@ class Network(object):
 
     @layer
     def add(self, inputs, name):
-        return tf.add_n(inputs, name=name)
+        #return tf.add_n(inputs, name=name)
+        return reduce(tf.add, inputs)
 
     @layer
     def fc(self, input, num_out, name, relu=True):
         with tf.variable_scope(name) as scope:
             input_shape = input.get_shape()
             if input_shape.ndims == 4:
-                # The input is spatial. Vectorize it first.
+                #The input is spatial. Vectorize it first.
                 dim = 1
                 for d in input_shape[1:].as_list():
                     dim *= d
+               # feed_in = tf.layers.flatten(input)#
                 feed_in = tf.reshape(input, [-1, dim])
             else:
                 feed_in, dim = (input, input_shape[-1].value)
-            weights = self.make_var('weights', shape=[dim, num_out])
+            weights = self.make_var('weights', shape=[feed_in.shape[-1], num_out])
             biases = self.make_var('biases', [num_out])
             op = tf.nn.relu_layer if relu else tf.nn.xw_plus_b
             fc = op(feed_in, weights, biases, name=scope.name)

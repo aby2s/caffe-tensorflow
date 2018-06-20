@@ -38,6 +38,8 @@ LAYER_DESCRIPTORS = {
     'Pooling': shape_pool,
     'Power': shape_identity,
     'ReLU': shape_identity,
+    'PReLU': shape_identity,
+
     'Scale': shape_identity,
     'Sigmoid': shape_identity,
     'SigmoidCrossEntropyLoss': shape_scalar,

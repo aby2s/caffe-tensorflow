@@ -38,7 +38,7 @@ class DataInjector(object):
         caffe = get_caffe_resolver().caffe
         net = caffe.Net(self.def_path, self.data_path, caffe.TEST)
         data = lambda blob: blob.data
-        self.params = [(k, map(data, v)) for k, v in net.params.items()]
+        self.params = [(k, list(map(data, v))) for k, v in net.params.items()]
 
     def load_using_pb(self):
         data = get_caffe_resolver().NetParameter()
@@ -133,9 +133,11 @@ class DataReshaper(object):
                 output_channels = fc_shape[0]
                 weights = weights.reshape((output_channels, in_shape.channels, in_shape.height,
                                            in_shape.width))
-                weights = weights.transpose(self.map(NodeKind.Convolution))
+                weights = weights.transpose((1, 2, 3, 0))
                 node.reshaped_data = weights.reshape(fc_shape[transpose_order[0]],
                                                      fc_shape[transpose_order[1]])
+            elif node.kind == NodeKind.PReLU:
+                node.reshaped_data = np.reshape(node.data[0], transpose_order)
             else:
                 node.reshaped_data = weights.transpose(transpose_order)
 
@@ -282,6 +284,8 @@ class ParameterNamer(object):
                 names = ('mean', 'variance')
                 if len(node.data) == 4:
                     names += ('scale', 'offset')
+            elif node.kind == NodeKind.PReLU:
+                names = ('alpha',)
             else:
                 print_stderr('WARNING: Unhandled parameters: {}'.format(node.kind))
                 continue
