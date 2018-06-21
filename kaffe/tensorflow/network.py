@@ -156,8 +156,8 @@ class Network(object):
             i = int(input.get_shape()[-3])
             alpha = self.make_var('alpha', shape=(i, 1, 1))
             tf.keras.layers.PReLU()
-            output = tf.nn.relu(input) - tf.multiply(alpha, tf.nn.relu(-1.0*input))
-            #output = tf.where(input > 0, input, tf.multiply(alpha, input))#tf.maximum(0.0, input) + tf.multiply(alpha, tf.minimum(0.0, input))
+            #output = tf.nn.relu(input) - tf.multiply(alpha, tf.nn.relu(-1.0*input))
+            output = tf.where(input > 0, input, tf.multiply(alpha, input))#tf.maximum(0.0, input) + tf.multiply(alpha, tf.minimum(0.0, input))
         return output
 
     @layer
@@ -195,8 +195,8 @@ class Network(object):
 
     @layer
     def add(self, inputs, name):
-        #return tf.add_n(inputs, name=name)
-        return reduce(tf.add, inputs)
+        return tf.add_n(inputs, name=name)
+        #return reduce(tf.add, inputs)
 
     @layer
     def fc(self, input, num_out, name, relu=True):
@@ -219,16 +219,16 @@ class Network(object):
 
     @layer
     def softmax(self, input, name):
-        input_shape = map(lambda v: v.value, input.get_shape())
+        input_shape = list(map(lambda v: v.value, input.get_shape()))
         if len(input_shape) > 2:
             # For certain models (like NiN), the singleton spatial dimensions
             # need to be explicitly squeezed, since they're not broadcast-able
             # in TensorFlow's NHWC ordering (unlike Caffe's NCHW).
-            if input_shape[1] == 1 and input_shape[2] == 1:
-                input = tf.squeeze(input, squeeze_dims=[1, 2])
-            else:
-                raise ValueError('Rank 2 tensor input expected for softmax!')
-        return tf.nn.softmax(input, name=name)
+            if input_shape[2] == 1 and input_shape[3] == 1:
+                input = tf.squeeze(input, squeeze_dims=[2,3])
+            # else:
+            #     raise ValueError('Rank 2 tensor input expected for softmax!')
+        return tf.nn.softmax(input, axis=1, name=name)
 
     @layer
     def batch_normalization(self, input, name, scale_offset=True, relu=False):
