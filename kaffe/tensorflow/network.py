@@ -153,9 +153,15 @@ class Network(object):
     @layer
     def prelu(self, input, name):
         with tf.variable_scope(name):
-            i = int(input.get_shape()[-3])
-            alpha = self.make_var('alpha', shape=(i, 1, 1))
-            tf.keras.layers.PReLU()
+            input_shape = input.get_shape()
+            if input_shape.ndims == 4:
+                i = int(input.get_shape()[-3])
+                alpha = self.make_var('alpha', shape=(i, 1, 1))
+            else:
+                i = int(input.get_shape()[-1])
+                alpha = self.make_var('alpha', shape=(i, 1, 1))
+                alpha = tf.reshape(alpha, (-1,))
+            #tf.keras.layers.PReLU()
             #output = tf.nn.relu(input) - tf.multiply(alpha, tf.nn.relu(-1.0*input))
             output = tf.where(input > 0, input, tf.multiply(alpha, input))#tf.maximum(0.0, input) + tf.multiply(alpha, tf.minimum(0.0, input))
         return output
